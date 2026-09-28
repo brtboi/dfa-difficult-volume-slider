@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Volume Slider</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <style>
+      /* Self-hosted so the game works offline and never flashes a fallback. */
+      @font-face {
+        font-family: "Fredoka";
+        src: url("/assets/fonts/fredoka.woff2") format("woff2-variations");
+        font-weight: 300 700;
+        font-display: block;
+      }
+
+      :root { color-scheme: light; }
+      html, body {
+        margin: 0; padding: 0; height: 100%;
+        background: #fdf8ef; overflow: hidden;
+        font-family: Fredoka, system-ui, -apple-system, sans-serif;
+      }
+      #game { width: 100%; height: 100%; }
+      #game canvas { display: block; }
+
+    </style>
+  </head>
+  <body>
+    <div id="game"></div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
