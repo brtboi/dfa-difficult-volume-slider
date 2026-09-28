@@ -1,9 +1,13 @@
 import Phaser from 'phaser';
-import { DEFAULT_VOLUME, NEXT_BIRD_DELAY_MS, GOAL_MIN, GOAL_MAX, GOAL_TOLERANCE, round2, fmt } from '../config';
+import {
+  DEFAULT_VOLUME, NEXT_BIRD_DELAY_MS, GOAL_MIN, GOAL_MAX, GOAL_TOLERANCE,
+  FORT_MIN, FORT_MAX, round2, fmt,
+} from '../config';
 import { layout } from '../layout';
 import SliderBar from '../objects/SliderBar';
 import Bird, { POSE } from '../objects/Bird';
 import Slingshot from '../objects/Slingshot';
+import Structure from '../objects/Structure';
 import VolumeController, { getAudio } from '../audio/VolumeController';
 import type { CollisionPair } from '../util/impact';
 import type { HudState } from './UIScene';
@@ -20,6 +24,8 @@ export default class GameScene extends Phaser.Scene {
 
   private goal = 0;
   private solved = false;
+  private fort!: Structure;
+  private lastLaunch: { vx: number; vy: number } | null = null;
 
   constructor() {
     super('Game');
@@ -39,9 +45,15 @@ export default class GameScene extends Phaser.Scene {
 
     this.newGoal();
 
+    // The fort stands between the slingshot and the goal, so a flat shot into
+    // the target zone has to go through it.
+    const fortAt = FORT_MIN + Math.random() * (FORT_MAX - FORT_MIN);
+    this.fort = new Structure(this, layout.volumeToX(fortAt));
+
     this.sling = new Slingshot(this);
     this.sling.onLaunch = (bird) => {
       this.bird = bird;
+      this.lastLaunch = bird.launchVelocity;
       this.audio.playSfx('fly');
     };
 
@@ -50,11 +62,15 @@ export default class GameScene extends Phaser.Scene {
   }
 
   override update(): void {
+    this.fort.sync(this.time.now, this.goal);
+
     const bird = this.bird;
     if (!bird) return;
 
     bird.sync();
     if (bird.state !== 'FLYING') return;
+    bird.updateFreeFlight();
+    bird.applyGroundDrag();
 
     if (bird.outOfBounds()) {
       this.retire(bird, false);
@@ -70,13 +86,42 @@ export default class GameScene extends Phaser.Scene {
 
   /** Dev-only probe for the calibration and goal harnesses. */
   debugBird(): {
-    x: number; y: number; state: string; pose: string;
+    x: number; y: number; state: string; pose: string; angle: number;
     vol: number; goal: number; solved: boolean;
+    fort: number; fortState: string[];
   } {
     const b = this.bird;
-    const common = { vol: this.bar.volume, goal: this.goal, solved: this.solved };
-    if (!b) return { x: -1, y: -1, state: 'NONE', pose: '-', ...common };
-    return { x: b.x, y: b.y, state: b.state, pose: b.sprite.texture.key, ...common };
+    const common = {
+      vol: this.bar.volume, goal: this.goal, solved: this.solved,
+      fort: this.fort.standing, fortState: this.fort.conditions(),
+    };
+    if (!b) return { x: -1, y: -1, state: 'NONE', pose: '-', angle: 0, ...common };
+    return { x: b.x, y: b.y, state: b.state, pose: b.sprite.texture.key, angle: b.sprite.rotation, ...common };
+  }
+
+  /** Dev-only: the last launch velocity, plus the physics constants in play. */
+  debugLaunch(): Record<string, number | null> {
+    return {
+      vx: this.lastLaunch?.vx ?? null,
+      vy: this.lastLaunch?.vy ?? null,
+      angleDeg: this.lastLaunch
+        ? (Math.atan2(-this.lastLaunch.vy, this.lastLaunch.vx) * 180) / Math.PI
+        : null,
+      gravityY: this.matter.world.engine.world.gravity.y,
+      launchK: layout.launchK,
+      maxPull: layout.maxPull,
+      S: layout.S,
+    };
+  }
+
+  /** Dev-only: per-piece body state of the fort. */
+  debugFort(): Array<Record<string, unknown>> {
+    return this.fort.bodyStates();
+  }
+
+  /** Dev-only: wipe the fort, to measure ballistics without deflection. */
+  debugClearFort(): void {
+    this.fort.destroy();
   }
 
   /** Dev-only: audio graph status. */
@@ -104,10 +149,12 @@ export default class GameScene extends Phaser.Scene {
       .setDisplaySize(L.bg.w, L.bg.h)
       .setDepth(0);
 
-    // Open the top so high arcs are not bounced off a ceiling.
+    // Only a floor. The sides would otherwise catch a fully drawn-back bird
+    // against the left wall and bounce overshooting shots back off the right
+    // one; the kill plane already retires anything that leaves the stage.
     this.matter.world.setBounds(
       0, -L.u(600), L.W, L.H + L.u(600),
-      L.u(64), true, true, false, true,
+      L.u(64), false, false, false, true,
     );
 
     this.matter.add.rectangle(
@@ -166,6 +213,9 @@ export default class GameScene extends Phaser.Scene {
         // First thing it touches after launch: swap to the impact pose.
         if (bird.state === 'FLYING') bird.setPose(POSE.landed);
       });
+      // Every pair, not just the bird's: a toppling beam damages what it lands on.
+      const now = this.time.now;
+      for (const pair of e.pairs) this.fort.handleCollision(pair, now);
     });
     this.matter.world.on('collisionend', (e: { pairs: CollisionPair[] }) => {
       forEachBirdPair(e.pairs, (bird, id) => bird.removeContact(id));

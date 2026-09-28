@@ -1,4 +1,4 @@
-import { round2 } from './config';
+import { round2, GRAVITY_Y } from './config';
 
 /**
  * Everything on screen is authored against a 720-unit-tall reference stage and
@@ -20,9 +20,20 @@ export const REF_W = 1280;
  */
 export const GRASS_Y = 525;
 
-/** The reach the launch power was originally calibrated against. */
+/** How far down the viewport that grass line should sit. */
+export const GRASS_SCREEN_FRAC = 0.80;
+
+/**
+ * The reach the launch power was calibrated against, and the pull-to-speed
+ * constant for it.
+ *
+ * Calibrated so a FULL draw lands at the far end of the track. Set it higher
+ * and only a sliver of the draw is usable - everything past it sails off the
+ * screen - which trains you to barely pull at all and makes every shot feel
+ * flat and underpowered.
+ */
 const REF_REACH = 1240 - 122;
-const REF_LAUNCH_K = 0.19;
+const REF_LAUNCH_K = 0.118;
 
 export interface Layout {
   W: number;
@@ -44,6 +55,8 @@ export interface Layout {
   forkR: { x: number; y: number };
   maxPull: number;
   grabRadius: number;
+  /** Gravity-free travel, as a multiple of how far the bird was drawn back. */
+  freeFlightRatio: number;
   launchK: number;
   gravityY: number;
 
@@ -78,24 +91,28 @@ export interface Layout {
 }
 
 export function computeLayout(W: number, H: number): Layout {
-  // Cover, not fit: the background must reach every edge, and everything else
-  // scales with it so the art stays in proportion to the painted scene.
-  const S = Math.max(W / REF_W, H / REF_H);
+  // Cover, not fit: the background must reach every edge. The vertical term
+  // is driven by where we want the grass line to land rather than by plain
+  // cover, which is what pushes the whole scene down the frame.
+  const S = Math.max(W / REF_W, (H * GRASS_SCREEN_FRAC) / GRASS_Y);
   const u = (n: number): number => n * S;
 
-  const bg = { x: (W - REF_W * S) / 2, y: (H - REF_H * S) / 2, w: REF_W * S, h: REF_H * S };
+  // Never leave a gap at the top, and never above the bottom edge.
+  let bgY = Math.min(0, H * GRASS_SCREEN_FRAC - GRASS_Y * S);
+  if (bgY + REF_H * S < H) bgY = H - REF_H * S;
+
+  const bg = { x: (W - REF_W * S) / 2, y: bgY, w: REF_W * S, h: REF_H * S };
   const groundY = bg.y + GRASS_Y * S;
   const groundBand = Math.max(H - groundY, u(40));
 
-  const barHeight = u(22);
-  // Resting on the grass: the track's bottom edge sits on the ground line, so
-  // the bar reads as lying on the ground rather than floating over it.
-  const barCenterY = groundY - barHeight / 2;
-  // Close enough to the slingshot that a short lob still lands on the track.
-  // Push this right and the low end of the slider becomes unreachable: the
-  // bird drops onto the grass before the bar begins.
-  const barLeft = u(240);
-  const barRight = W - u(40);
+  const barHeight = u(18);
+  // Floating just clear of the grass: close enough to read as lying on the
+  // ground, high enough that its drop shadow separates it from the foliage.
+  const barCenterY = groundY - barHeight / 2 - u(16);
+  // Set back from the slingshot and capped in length, so the track occupies a
+  // slice of the stage rather than spanning the whole width.
+  const barLeft = u(470);
+  const barRight = Math.min(W - u(120), barLeft + u(700));
   const barSpan = barRight - barLeft;
   // Fits inside the track's half-height so the knob nests in the groove
   // instead of its outline doubling up with the trough's cap.
@@ -128,8 +145,9 @@ export function computeLayout(W: number, H: number): Layout {
     forkR: { x: u(143), y: groundY - u(188) },
     maxPull: u(165),
     grabRadius: u(90),
+    freeFlightRatio: 1.5,
     launchK,
-    gravityY: 1.4 * S,
+    gravityY: GRAVITY_Y * S,
     barLeft, barRight, barSpan, barCenterY, barHeight,
     barPad, barDrawLeft, barDrawRight,
     barDrawSpan: barDrawRight - barDrawLeft,

@@ -102,7 +102,7 @@ export default class Slingshot {
       return;
     }
 
-    bird.launch(dx * layout.launchK, dy * layout.launchK);
+    bird.launch(dx * layout.launchK, dy * layout.launchK, Math.hypot(dx, dy));
     this.bird = null;
     this.bands.clear();
     this.onLaunch?.(bird);

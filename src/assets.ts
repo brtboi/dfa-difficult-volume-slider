@@ -9,7 +9,7 @@ export type ImageKey =
   | 'bird' | 'bird_fly' | 'bird_hit'
   | 'pig' | 'pig_hurt'
   | 'slingshot_left' | 'slingshot_right'
-  | 'background' | 'wood';
+  | 'background' | 'wood' | 'wood_beam' | 'wood_beam_damaged';
 
 // Music only — no SFX for now.
 export type AudioKey = 'theme';
@@ -27,6 +27,8 @@ export const IMAGES: ReadonlyArray<readonly [ImageKey, string]> = [
   ['slingshot_right', 'assets/sprites/slingshot_right.png'],  // 86x540, far prong
   ['background', 'assets/sprites/background.png'], // 1280x720, grass at y=525
   ['wood',       'assets/sprites/wood.png'],       // 500x390 ATLAS, see note
+  ['wood_beam',  'assets/sprites/wood_beam.png'],           // 169x21, atlas frame 15
+  ['wood_beam_damaged', 'assets/sprites/wood_beam_damaged.png'], // 169x21, atlas frame 18
 ];
 
 /** Played through the SFX gain on launch; loaded by VolumeController. */

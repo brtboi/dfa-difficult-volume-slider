@@ -80,7 +80,19 @@ export default class Bird {
     this.scene.matter.body.setPosition(this.body, { x, y }, false);
   }
 
-  launch(vx: number, vy: number): void {
+  /** Dev: the velocity this bird was launched with. */
+  launchVelocity: { vx: number; vy: number } | null = null;
+
+  private launchPoint = { x: 0, y: 0 };
+  private freeFlight = false;
+  private freeDist = 0;
+
+  /** `pull` is how far back the bird was drawn, in world px. */
+  launch(vx: number, vy: number, pull: number): void {
+    this.launchVelocity = { vx, vy };
+    this.launchPoint = { x: this.body.position.x, y: this.body.position.y };
+    this.freeDist = pull * layout.freeFlightRatio;
+    this.freeFlight = true;
     this.scene.matter.body.setStatic(this.body, false);
     this.scene.matter.body.setVelocity(this.body, { x: vx, y: vy });
     this.scene.matter.body.setAngularVelocity(this.body, 0.12);
@@ -91,6 +103,54 @@ export default class Bird {
   }
 
   // --- contact tracking, driven by GameScene's world collision events ------
+
+  /**
+   * Straight-line travel until the bird is clear of the slingshot, then
+   * normal ballistics.
+   *
+   * The bird launches from wherever it was drawn back to, which at full pull
+   * is well below the pouch. Letting gravity bite immediately means it starts
+   * dropping from that low point and the shot reads as limp no matter how
+   * hard you pull. Holding gravity off until it has cleared the fork lets the
+   * draw translate into height first.
+   *
+   * The free distance scales with the draw, so a light tap does not get the
+   * same long straight-line carry as a full pull.
+   */
+  updateFreeFlight(): void {
+    if (!this.freeFlight) return;
+
+    const v = this.launchVelocity;
+    if (!v) { this.freeFlight = false; return; }
+
+    const dx = this.body.position.x - this.launchPoint.x;
+    const dy = this.body.position.y - this.launchPoint.y;
+    if (Math.hypot(dx, dy) >= this.freeDist) {
+      this.freeFlight = false;
+      return;
+    }
+
+    // Re-assert the launch velocity, undoing the step's gravity.
+    this.scene.matter.body.setVelocity(this.body, { x: v.vx, y: v.vy });
+  }
+
+  /**
+   * Rolling resistance once the bird is touching something.
+   *
+   * Left alone, a high-friction circle rolls without slipping and coasts for
+   * hundreds of pixels, which decouples where it lands from where it stops.
+   * But damping the spin as hard as the motion made it skid to a halt like a
+   * dropped stone. Only the linear speed is bled off meaningfully; the spin
+   * is left almost intact so Matter's friction keeps it rolling, just over a
+   * shorter distance.
+   */
+  applyGroundDrag(): void {
+    if (this.contacts.size === 0) return;
+    this.freeFlight = false;
+    const v = this.body.velocity;
+    this.scene.matter.body.setVelocity(this.body, { x: v.x * 0.90, y: v.y * 0.98 });
+    this.scene.matter.body.setAngularVelocity(this.body, this.body.angularVelocity * 0.99);
+  }
 
   addContact(id: number): void { this.contacts.add(id); }
   removeContact(id: number): void { this.contacts.delete(id); }

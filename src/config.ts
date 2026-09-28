@@ -8,6 +8,17 @@
 export const FORT_LEFT = 400;
 export const FORT_RIGHT = 1200;
 
+// --- Physics ----------------------------------------------------------------
+/**
+ * World gravity in reference units; layout scales it with the stage.
+ *
+ * 1.4 is the original value. Lowering it stretches the same arc over more
+ * time, which reads as sluggish; raising it speeds everything up. Launch
+ * power has to move with it (range goes as v^2/g) or the reachable band
+ * shifts - see REF_LAUNCH_K in layout.ts.
+ */
+export const GRAVITY_Y = 1.4;
+
 export interface BodySpec {
   radius: number;
   restitution: number;
@@ -23,7 +34,11 @@ export const BIRD: Readonly<BodySpec> = {
   // roll along the bar, which otherwise makes the low end unreachable.
   restitution: 0.12,
   friction: 0.9,
-  frictionAir: 0.01,
+  // Very little drag. At 0.01 the bird bled roughly half its apex height on
+  // the way up, which made every shot feel flat and heavy; a projectile's
+  // apex is fixed at a quarter of its range, and drag was the only thing
+  // stopping it reaching that.
+  frictionAir: 0.002,
   density: 0.004,
 };
 
@@ -79,8 +94,17 @@ export const DEFAULT_VOLUME = 50;
 export const VOLUME_DP = 2;
 /** How close counts as a hit, in percentage points. */
 export const GOAL_TOLERANCE = 0.5;
-export const GOAL_MIN = 5;
-export const GOAL_MAX = 95;
+// The goal always sits past the midpoint, beyond the fort.
+export const GOAL_MIN = 55;
+export const GOAL_MAX = 92;
+
+/**
+ * Where the fort stands, as a percentage of the track. Always before 30%,
+ * and kept to the far end of that window: nearer the slingshot it sits under
+ * the trajectory's apex, where even a flat shot sails over it.
+ */
+export const FORT_MIN = 21;
+export const FORT_MAX = 28;
 
 /** Round to the displayed precision. All comparisons use this. */
 export const round2 = (n: number): number => Math.round(n * 100) / 100;
